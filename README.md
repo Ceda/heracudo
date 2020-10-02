@@ -32,7 +32,7 @@ Heroku Review Apps + Cloudflare + Github Pull Requests
       * Review application domain for `domain.tld` will be `{number}.domain.tld`
       * Review application domain for `subdomain.domain.tld` will be `{number}-subdomain.domain.tld`
     * `HEROKU_TOKEN | HRCD_HEROKU_TOKEN` Heroku API access token.
-    * `CLOUDFLARE_ZONE_ID | HRCD_CLOUDFLARE_ZONE_ID` Cloudflare domain zone ID.
+    * `CLOUDFLARE_ZONE_ID | HRCD_CLOUDFLARE_ZONE_ID` Comma separated list Cloudflare domain zone ID (same order as hostname) .
     * `CLOUDFLARE_TOKEN | HRCD_CLOUDFLARE_TOKEN` Cloudflare API access token.
     * `GITHUB_TOKEN | HRCD_GITHUB_TOKEN` Github API access token.
     * `GITHUB_REPOSITORY | HRCD_GITHUB_REPOSITORY` Github repository name in format `username/repository_name`.
