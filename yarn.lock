@@ -2131,10 +2131,10 @@ parent-module@^1.0.0:
   dependencies:
     callsites "^3.0.0"
 
-parse-domain@3.0.2:
-  version "3.0.2"
-  resolved "https://registry.yarnpkg.com/parse-domain/-/parse-domain-3.0.2.tgz#ed13cf18c81d2bdeb6fbe6cf21ba8ea5c8f53818"
-  integrity sha512-eR48amwZBKL6VEdnqGTNILLBfYaOyDBh256Pjbxt+pqRYvMzG68raIJ/Q8bKrAjJJeRX84JGsoOmFW7/vY9KrQ==
+parse-domain@3.0.3:
+  version "3.0.3"
+  resolved "https://registry.yarnpkg.com/parse-domain/-/parse-domain-3.0.3.tgz#83df611ee3f77896175355cc12f3c652dd5931aa"
+  integrity sha512-KOJR8kEymjWO5xHrt57LFJ4xtncwGfd/Z9+Twm6apKU9NIw3uSnwYTAoRUwC+MflGsn5h6MeyHltz6Fa6KT7cA==
   dependencies:
     is-ip "^3.1.0"
     node-fetch "^2.6.0"
