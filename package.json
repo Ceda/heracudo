@@ -1,6 +1,6 @@
 {
   "name": "heracudo",
-  "version": "1.2.2",
+  "version": "1.2.21",
   "description": "Heracudo - Heroku Review Apps Custom Domain",
   "main": "lib/index.js",
   "keywords": [
@@ -35,7 +35,7 @@
   },
   "homepage": "https://github.com/b12k/heracudo#readme",
   "dependencies": {
-    "axios": "0.20.0",
+    "axios": "0.24.0",
     "parse-domain": "3.0.3"
   },
   "devDependencies": {
