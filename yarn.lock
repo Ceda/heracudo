@@ -2311,10 +2311,10 @@ parent-module@^1.0.0:
   dependencies:
     callsites "^3.0.0"
 
-parse-domain@3.0.3:
-  version "3.0.3"
-  resolved "https://registry.yarnpkg.com/parse-domain/-/parse-domain-3.0.3.tgz#83df611ee3f77896175355cc12f3c652dd5931aa"
-  integrity sha512-KOJR8kEymjWO5xHrt57LFJ4xtncwGfd/Z9+Twm6apKU9NIw3uSnwYTAoRUwC+MflGsn5h6MeyHltz6Fa6KT7cA==
+parse-domain@3.0.4:
+  version "3.0.4"
+  resolved "https://registry.yarnpkg.com/parse-domain/-/parse-domain-3.0.4.tgz#99811f389864831ef31ee588917f782c120a6fb5"
+  integrity sha512-4JVDf87cQ9j9ldbBgXyG7GWnvhnITw23yBv29FuAG7zSCo0QIlLO03NgVopjVB/wX26ayD+yxHXzUW+a4A3RXQ==
   dependencies:
     is-ip "^3.1.0"
     node-fetch "^2.6.0"
