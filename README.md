@@ -3,7 +3,7 @@
 
 Special heroku review application hooks which make usage of fancy custom review application domain possible.
 
-Heroku Review Apps + Cloudflare + Github Pull Requests
+Heroku Review Apps + Cloudflare + Github Pull Requests + Jira Integration
 
 ### Installation
 1. `npm i heracudo --save` Must be installed in `dependencies`, not `devDependencies`, in order not to be pruned after Heroku installation process.
@@ -36,6 +36,9 @@ Heroku Review Apps + Cloudflare + Github Pull Requests
     * `CLOUDFLARE_TOKEN | HRCD_CLOUDFLARE_TOKEN` Cloudflare API access token.
     * `GITHUB_TOKEN | HRCD_GITHUB_TOKEN` Github API access token.
     * `GITHUB_REPOSITORY | HRCD_GITHUB_REPOSITORY` Github repository name in format `username/repository_name`.
+    * `JIRA_HOST | HRCD_JIRA_HOST` Jira instance hostname (e.g., `yourcompany.atlassian.net`).
+    * `JIRA_EMAIL | HRCD_JIRA_EMAIL` Email address for Jira authentication.
+    * `JIRA_API_TOKEN | HRCD_JIRA_API_TOKEN` Jira API token for authentication.
 
     Optional:
     * `HRCD_GITHUB_LINK_MARKER`   A string which will be added before of review app link in Github pull request description. Defaults to `## Preview: `
