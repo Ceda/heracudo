@@ -109,7 +109,57 @@ describe('postDeploy', () => {
 
     nock('https://api.cloudflare.com')
       .post('/client/v4/zones/test-zone-id/dns_records')
-      .reply(400, { success: false, errors: [{ code: 81057, message: 'Record already exists.' }] });
+      .reply(400, { success: false, errors: [{ code: 81057, message: 'Record already exists.' }] })
+      .get('/client/v4/zones/test-zone-id/dns_records')
+      .query({ name: 'test-pr-123.example.com' })
+      .reply(200, {
+        success: true,
+        result: [{
+          id: 'dns-1',
+          type: 'CNAME',
+          name: 'test-pr-123.example.com',
+          content: 'test-pr-123.herokudns.com',
+        }],
+      });
+
+    mockGithub(({ body }) => body.includes('https://test-pr-123.example.com'));
+    mockJira();
+
+    await postDeploy();
+
+    expect(nock.isDone()).toBe(true);
+    expect(process.exit).not.toHaveBeenCalled();
+  });
+
+  test('should update existing DNS record pointing to a stale cname', async () => {
+    nock('https://api.heroku.com')
+      .post('/apps/test-pr-123/domains')
+      .reply(201, {
+        hostname: 'test-pr-123.example.com',
+        cname: 'test-pr-123-new.herokudns.com',
+      });
+
+    nock('https://api.cloudflare.com')
+      .post('/client/v4/zones/test-zone-id/dns_records')
+      .reply(400, { success: false, errors: [{ code: 81057, message: 'Record already exists.' }] })
+      .get('/client/v4/zones/test-zone-id/dns_records')
+      .query({ name: 'test-pr-123.example.com' })
+      .reply(200, {
+        success: true,
+        result: [{
+          id: 'dns-stale',
+          type: 'CNAME',
+          name: 'test-pr-123.example.com',
+          content: 'test-pr-123-old.herokudns.com',
+        }],
+      })
+      .put('/client/v4/zones/test-zone-id/dns_records/dns-stale', {
+        name: 'test-pr-123.example.com',
+        content: 'test-pr-123-new.herokudns.com',
+        type: 'CNAME',
+        proxied: true,
+      })
+      .reply(200, { success: true });
 
     mockGithub(({ body }) => body.includes('https://test-pr-123.example.com'));
     mockJira();
