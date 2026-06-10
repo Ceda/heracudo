@@ -14,11 +14,15 @@ describe('github API', () => {
     nock.cleanAll();
   });
 
-  describe('createPrLink', () => {
-    test('should add review app link to PR description', async () => {
-      const hostname = 'https://pr123.example.com';
+  describe('createPrLinks', () => {
+    test('should add review app links to PR description in single request', async () => {
+      const hostnames = ['https://pr123.example.com', 'https://pr123.example.org'];
       const existingBody = 'Existing PR description';
-      const expectedNewBody = `## Review App: [${hostname}](${hostname}) 🚀\r\n${existingBody}`;
+      const expectedNewBody = [
+        `## Review App: [${hostnames[0]}](${hostnames[0]}) 🚀`,
+        `## Review App: [${hostnames[1]}](${hostnames[1]}) 🚀`,
+        existingBody,
+      ].join('\r\n');
 
       // Mock GET PR
       nock(GITHUB_BASE_URL)
@@ -32,7 +36,43 @@ describe('github API', () => {
         })
         .reply(200, { body: expectedNewBody });
 
-      const response = await github.createPrLink(hostname);
+      const response = await github.createPrLinks(hostnames);
+
+      expect(response.status).toBe(200);
+    });
+
+    test('should skip links already present in PR description', async () => {
+      const hostname = 'https://pr123.example.com';
+      const existingBody = `## Review App: [${hostname}](${hostname}) 🚀\r\nExisting PR description`;
+
+      // Mock GET PR only — no PATCH expected
+      nock(GITHUB_BASE_URL)
+        .get(`/repos/${TEST_REPO}/pulls/${TEST_PR_NUMBER}`)
+        .reply(200, { body: existingBody });
+
+      const response = await github.createPrLinks([hostname]);
+
+      expect(response).toBeNull();
+      expect(nock.isDone()).toBe(true);
+    });
+
+    test('should handle PR with empty description', async () => {
+      const hostname = 'https://pr123.example.com';
+      const expectedNewBody = `## Review App: [${hostname}](${hostname}) 🚀\r\n`;
+
+      // Mock GET PR with null body
+      nock(GITHUB_BASE_URL)
+        .get(`/repos/${TEST_REPO}/pulls/${TEST_PR_NUMBER}`)
+        .reply(200, { body: null });
+
+      // Mock PATCH PR
+      nock(GITHUB_BASE_URL)
+        .patch(`/repos/${TEST_REPO}/pulls/${TEST_PR_NUMBER}`, {
+          body: expectedNewBody,
+        })
+        .reply(200, { body: expectedNewBody });
+
+      const response = await github.createPrLinks([hostname]);
 
       expect(response.status).toBe(200);
     });
@@ -50,11 +90,11 @@ describe('github API', () => {
         .patch(`/repos/${TEST_REPO}/pulls/${TEST_PR_NUMBER}`)
         .reply(403, { message: 'Forbidden' });
 
-      await expect(github.createPrLink(hostname)).rejects.toThrow();
+      await expect(github.createPrLinks([hostname])).rejects.toThrow();
     });
 
-    test('should throw error when hostname is missing', async () => {
-      await expect(github.createPrLink()).rejects.toThrow('"hostname" required but not defined.');
+    test('should throw error when hostnames are missing', async () => {
+      await expect(github.createPrLinks()).rejects.toThrow('"hostnames" required but not defined.');
     });
   });
 

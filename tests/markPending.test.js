@@ -63,6 +63,7 @@ describe('markPending', () => {
 
     await markPending();
 
-    expect(process.exit).toHaveBeenCalledWith(1);
+    // Cosmetic operation must never fail the build
+    expect(process.exit).not.toHaveBeenCalled();
   });
 });

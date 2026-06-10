@@ -1,151 +1,172 @@
 const nock = require('nock');
 
-// Mock modules before requiring postDeploy
-jest.mock('../lib/helpers/getCfZoneIds', () => () => [
-  { domain: 'test.example.com', zoneId: 'test-zone-id' },
-]);
+const mockGetCfZoneIds = jest.fn();
+jest.mock('../lib/helpers/getCfZoneIds', () => () => mockGetCfZoneIds());
 
 const postDeploy = require('../lib/postDeploy');
+
+const mockGithub = (patchMatcher = () => true) => {
+  nock('https://api.github.com')
+    .get('/repos/user/repo/pulls/456')
+    .reply(200, { body: 'Existing PR body' })
+    .patch('/repos/user/repo/pulls/456', patchMatcher)
+    .reply(200, { body: 'Updated PR body' });
+};
+
+const mockJira = () => {
+  nock('https://test.atlassian.net')
+    .get('/rest/api/3/search/jql')
+    .query(true)
+    .reply(200, { issues: [{ key: 'TEST-123' }] })
+    .get('/rest/api/3/field')
+    .reply(200, [{ id: 'customfield_10001', name: 'ReviewApps' }])
+    .put('/rest/api/3/issue/TEST-123')
+    .reply(204);
+};
 
 describe('postDeploy', () => {
   beforeEach(() => {
     nock.cleanAll();
     jest.clearAllMocks();
 
-    // Set required env vars
-    process.env.HRCD_HOSTNAME = 'test.example.com';
+    process.env.HRCD_HOSTNAME = 'example.com';
     process.env.HEROKU_APP_NAME = 'test-pr-123';
+
+    mockGetCfZoneIds.mockReturnValue([
+      { domain: 'example.com', zoneId: 'test-zone-id' },
+    ]);
   });
 
   afterAll(() => {
     nock.cleanAll();
   });
 
-  test('should create domain, DNS record, and update PR', async () => {
-    const expectedHostname = 'test-pr-123.test.example.com';
-    const expectedCname = 'test-pr-123.herokuapp.com';
-
-    // Mock Heroku create domain
+  test('should create domain, DNS record, PR link and Jira comment', async () => {
     nock('https://api.heroku.com')
       .post('/apps/test-pr-123/domains')
       .reply(201, {
-        data: {
-          hostname: expectedHostname,
-          cname: expectedCname,
-        },
+        hostname: 'test-pr-123.example.com',
+        cname: 'test-pr-123.herokudns.com',
       });
 
-    // Mock Cloudflare create DNS record
     nock('https://api.cloudflare.com')
-      .post('/client/v4/zones/test-zone-id/dns_records')
-      .reply(200, {
-        success: true,
-        result: { id: 'new-dns-record-id' },
-      });
+      .post('/client/v4/zones/test-zone-id/dns_records', {
+        name: 'test-pr-123',
+        content: 'test-pr-123.herokudns.com',
+        type: 'CNAME',
+        proxied: true,
+      })
+      .reply(200, { success: true, result: { id: 'dns-1' } });
 
-    // Mock GitHub update PR
-    nock('https://api.github.com')
-      .get('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Existing PR body' })
-      .patch('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Updated PR body' });
-
-    // Mock Jira search and comment
-    nock('https://test.atlassian.net')
-      .get('/rest/api/3/search')
-      .query(true)
-      .reply(200, { issues: [{ key: 'TEST-123' }] })
-      .post('/rest/api/3/issue/TEST-123/comment')
-      .reply(201, { id: 'comment-id' });
+    mockGithub(({ body }) => body.includes('https://test-pr-123.example.com'));
+    mockJira();
 
     await postDeploy();
+
+    expect(nock.isDone()).toBe(true);
+    expect(process.exit).not.toHaveBeenCalled();
   });
 
-  test('should handle multiple hostnames', async () => {
-    process.env.HRCD_HOSTNAME = 'test.example.com,staging.example.com';
-    process.env.HRCD_CLOUDFLARE_ZONE_ID = 'zone1,zone2';
-
-    // Mock getCfZoneIds for multiple zones
-    jest.doMock('../lib/helpers/getCfZoneIds', () => () => [
-      { domain: 'test.example.com', zoneId: 'zone1' },
-      { domain: 'staging.example.com', zoneId: 'zone2' },
+  test('should continue with remaining hostnames when one fails', async () => {
+    process.env.HRCD_HOSTNAME = 'example.com,example.org';
+    mockGetCfZoneIds.mockReturnValue([
+      { domain: 'example.com', zoneId: 'zone-broken' },
+      { domain: 'example.org', zoneId: 'zone-ok' },
     ]);
 
-    // Mock multiple Heroku domains
     nock('https://api.heroku.com')
       .post('/apps/test-pr-123/domains')
       .times(2)
       .reply(201, (uri, requestBody) => ({
-        data: {
-          hostname: requestBody.hostname,
-          cname: 'test-pr-123.herokuapp.com',
-        },
+        hostname: requestBody.hostname,
+        cname: 'test-pr-123.herokudns.com',
       }));
 
-    // Mock multiple Cloudflare DNS records
+    // First zone is gone (same as an expired/deleted Cloudflare zone)
     nock('https://api.cloudflare.com')
-      .post('/client/v4/zones/zone1/dns_records')
-      .reply(200, { success: true, result: { id: 'dns1' } })
-      .post('/client/v4/zones/zone2/dns_records')
-      .reply(200, { success: true, result: { id: 'dns2' } });
+      .post('/client/v4/zones/zone-broken/dns_records')
+      .reply(400, { success: false, errors: [{ code: 7003, message: 'Could not route to /zones/zone-broken' }] })
+      .post('/client/v4/zones/zone-ok/dns_records')
+      .reply(200, { success: true, result: { id: 'dns-2' } });
 
-    // Mock GitHub and Jira once
-    nock('https://api.github.com')
-      .get('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Existing PR body' })
-      .patch('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Updated PR body' });
-
-    nock('https://test.atlassian.net')
-      .get('/rest/api/3/search')
-      .query(true)
-      .reply(200, { issues: [{ key: 'TEST-123' }] })
-      .post('/rest/api/3/issue/TEST-123/comment')
-      .reply(201, { id: 'comment-id' });
-
-    const postDeployMultiple = require('../lib/postDeploy');
-    await postDeployMultiple();
-  });
-
-  test('should handle subdomain hostname', async () => {
-    process.env.HRCD_HOSTNAME = 'api.test.example.com';
-
-    // Mock Heroku create domain with subdomain
-    nock('https://api.heroku.com')
-      .post('/apps/test-pr-123/domains', {
-        hostname: 'test-pr-123-api.test.example.com',
-        sni_endpoint: null,
-      })
-      .reply(201, {
-        data: {
-          hostname: 'test-pr-123-api.test.example.com',
-          cname: 'test-pr-123.herokuapp.com',
-        },
-      });
-
-    // Mock other services
-    nock('https://api.cloudflare.com')
-      .post('/client/v4/zones/test-zone-id/dns_records')
-      .reply(200, { success: true, result: { id: 'dns-id' } });
-
-    nock('https://api.github.com')
-      .get('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Existing PR body' })
-      .patch('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Updated PR body' });
-
-    nock('https://test.atlassian.net')
-      .get('/rest/api/3/search')
-      .query(true)
-      .reply(200, { issues: [{ key: 'TEST-123' }] })
-      .post('/rest/api/3/issue/TEST-123/comment')
-      .reply(201, { id: 'comment-id' });
+    mockGithub(({ body }) => body.includes('https://test-pr-123.example.org')
+      && !body.includes('https://test-pr-123.example.com'));
+    mockJira();
 
     await postDeploy();
+
+    expect(nock.isDone()).toBe(true);
+    expect(process.exit).not.toHaveBeenCalled();
   });
 
-  test('should handle API errors gracefully', async () => {
-    // Mock Heroku error
+  test('should treat already existing DNS record as success', async () => {
+    nock('https://api.heroku.com')
+      .post('/apps/test-pr-123/domains')
+      .reply(201, {
+        hostname: 'test-pr-123.example.com',
+        cname: 'test-pr-123.herokudns.com',
+      });
+
+    nock('https://api.cloudflare.com')
+      .post('/client/v4/zones/test-zone-id/dns_records')
+      .reply(400, { success: false, errors: [{ code: 81057, message: 'Record already exists.' }] });
+
+    mockGithub(({ body }) => body.includes('https://test-pr-123.example.com'));
+    mockJira();
+
+    await postDeploy();
+
+    expect(nock.isDone()).toBe(true);
+    expect(process.exit).not.toHaveBeenCalled();
+  });
+
+  test('should reuse already existing Heroku domain', async () => {
+    nock('https://api.heroku.com')
+      .post('/apps/test-pr-123/domains')
+      .reply(422, { id: 'invalid_params', message: 'Hostname is already added to this app.' })
+      .get('/apps/test-pr-123/domains/test-pr-123.example.com')
+      .reply(200, {
+        hostname: 'test-pr-123.example.com',
+        cname: 'test-pr-123.herokudns.com',
+      });
+
+    nock('https://api.cloudflare.com')
+      .post('/client/v4/zones/test-zone-id/dns_records')
+      .reply(200, { success: true, result: { id: 'dns-1' } });
+
+    mockGithub();
+    mockJira();
+
+    await postDeploy();
+
+    expect(nock.isDone()).toBe(true);
+    expect(process.exit).not.toHaveBeenCalled();
+  });
+
+  test('should skip hostname without configured zone and continue', async () => {
+    process.env.HRCD_HOSTNAME = 'unknown.com,example.com';
+
+    nock('https://api.heroku.com')
+      .post('/apps/test-pr-123/domains', { hostname: 'test-pr-123.example.com', sni_endpoint: null })
+      .reply(201, {
+        hostname: 'test-pr-123.example.com',
+        cname: 'test-pr-123.herokudns.com',
+      });
+
+    nock('https://api.cloudflare.com')
+      .post('/client/v4/zones/test-zone-id/dns_records')
+      .reply(200, { success: true, result: { id: 'dns-1' } });
+
+    mockGithub(({ body }) => !body.includes('unknown.com'));
+    mockJira();
+
+    await postDeploy();
+
+    expect(nock.isDone()).toBe(true);
+    expect(process.exit).not.toHaveBeenCalled();
+  });
+
+  test('should exit 1 when all hostnames fail', async () => {
     nock('https://api.heroku.com')
       .post('/apps/test-pr-123/domains')
       .reply(500, { message: 'Internal server error' });
@@ -155,65 +176,29 @@ describe('postDeploy', () => {
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
-  test('should add Jira comment when hostnames exist', async () => {
-    const expectedHostname = 'test-pr-123.test.example.com';
-    const expectedCname = 'test-pr-123.herokuapp.com';
-
-    // Mock Heroku create domain
+  test('should not exit when only Github and Jira updates fail', async () => {
     nock('https://api.heroku.com')
       .post('/apps/test-pr-123/domains')
       .reply(201, {
-        data: {
-          hostname: expectedHostname,
-          cname: expectedCname,
-        },
+        hostname: 'test-pr-123.example.com',
+        cname: 'test-pr-123.herokudns.com',
       });
 
-    // Mock Cloudflare create DNS record
     nock('https://api.cloudflare.com')
       .post('/client/v4/zones/test-zone-id/dns_records')
-      .reply(200, {
-        success: true,
-        result: { id: 'new-dns-record-id' },
-      });
+      .reply(200, { success: true, result: { id: 'dns-1' } });
 
-    // Mock GitHub update PR
     nock('https://api.github.com')
       .get('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Existing PR body' })
-      .patch('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Updated PR body' });
+      .reply(500, { message: 'Internal server error' });
 
-    // Mock Jira search and comment - this should be called
     nock('https://test.atlassian.net')
-      .get('/rest/api/3/search')
+      .get('/rest/api/3/search/jql')
       .query(true)
-      .reply(200, { issues: [{ key: 'TEST-123' }] })
-      .post('/rest/api/3/issue/TEST-123/comment')
-      .reply(201, { id: 'comment-id' });
+      .reply(500, { message: 'Internal server error' });
 
     await postDeploy();
-  });
 
-  test('should skip Jira comment when no hostnames', async () => {
-    // Mock Heroku to return empty hostname - this creates empty reviewAppHostnames array
-    nock('https://api.heroku.com')
-      .post('/apps/test-pr-123/domains')
-      .reply(201, { data: { hostname: '', cname: 'test.herokuapp.com' } });
-
-    // Mock Cloudflare
-    nock('https://api.cloudflare.com')
-      .post('/client/v4/zones/test-zone-id/dns_records')
-      .reply(200, { success: true });
-
-    // Mock GitHub
-    nock('https://api.github.com')
-      .get('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Body' })
-      .patch('/repos/user/repo/pulls/456')
-      .reply(200, { body: 'Body' });
-
-    // Jira should NOT be called
-    await postDeploy();
+    expect(process.exit).not.toHaveBeenCalled();
   });
 });
