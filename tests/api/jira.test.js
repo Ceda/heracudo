@@ -39,7 +39,7 @@ describe('jira API', () => {
 
   describe('createComment', () => {
     test('should update ReviewApps field on found issue', async () => {
-      const hostname = 'https://pr123.example.com';
+      const hostnames = ['https://pr123.example.com', 'https://pr123.example.org'];
       const mockSearchResponse = {
         issues: [
           {
@@ -87,14 +87,28 @@ describe('jira API', () => {
                       type: 'text',
                       text: 'Review Apps: ',
                     },
+                    { type: 'hardBreak' },
                     {
                       type: 'text',
-                      text: hostname,
+                      text: hostnames[0],
                       marks: [
                         {
                           type: 'link',
                           attrs: {
-                            href: hostname,
+                            href: hostnames[0],
+                          },
+                        },
+                      ],
+                    },
+                    { type: 'hardBreak' },
+                    {
+                      type: 'text',
+                      text: hostnames[1],
+                      marks: [
+                        {
+                          type: 'link',
+                          attrs: {
+                            href: hostnames[1],
                           },
                         },
                       ],
@@ -107,7 +121,7 @@ describe('jira API', () => {
         })
         .reply(204);
 
-      await jira.createComment(hostname);
+      await jira.createComment(hostnames);
     });
 
     test('should not update field when no issue found', async () => {
@@ -124,13 +138,13 @@ describe('jira API', () => {
         .reply(200, mockSearchResponse);
 
       // Should not make field or update requests
-      await jira.createComment(hostname);
+      await jira.createComment([hostname]);
     });
 
     test('should throw error when hostname is missing', async () => {
       await expect(async () => {
         await jira.createComment();
-      }).rejects.toThrow('"hostname" required but not defined.');
+      }).rejects.toThrow('"hostnames" required but not defined.');
     });
 
     test('should handle search API error', async () => {
@@ -142,7 +156,7 @@ describe('jira API', () => {
         .query(true)
         .reply(500, { message: 'Internal server error' });
 
-      await expect(jira.createComment(hostname)).rejects.toThrow();
+      await expect(jira.createComment([hostname])).rejects.toThrow();
     });
 
     test('should handle field API errors', async () => {
@@ -162,7 +176,7 @@ describe('jira API', () => {
         .get('/rest/api/3/field')
         .reply(403, { message: 'Forbidden' });
 
-      await expect(jira.createComment(hostname)).rejects.toThrow();
+      await expect(jira.createComment([hostname])).rejects.toThrow();
     });
 
     test('should handle field update API error', async () => {
@@ -195,7 +209,7 @@ describe('jira API', () => {
         .put(`/rest/api/3/issue/${TEST_ISSUE_KEY}`)
         .reply(403, { message: 'Forbidden' });
 
-      await expect(jira.createComment(hostname)).rejects.toThrow();
+      await expect(jira.createComment([hostname])).rejects.toThrow();
     });
 
     test('should handle missing ReviewApps field', async () => {
@@ -223,7 +237,7 @@ describe('jira API', () => {
         .get('/rest/api/3/field')
         .reply(200, mockFieldsResponse);
 
-      await expect(jira.createComment(hostname)).rejects.toThrow('ReviewApps field not found');
+      await expect(jira.createComment([hostname])).rejects.toThrow('ReviewApps field not found');
     });
   });
 });
